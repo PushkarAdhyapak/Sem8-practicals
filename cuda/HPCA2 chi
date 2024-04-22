@@ -1,0 +1,74 @@
+%%writefile bubble.cu
+#include <iostream>
+#include <vector>
+#include <chrono>
+using namespace std;
+__device__ void device_swap(int& a, int& b) {
+int temp = a;
+a = b;
+b = temp;
+}
+__global__ void kernel_bubble_sort_odd_even(int* arr, int size) {
+bool isSorted = false;
+while (!isSorted) {
+isSorted = true;
+int tid = blockIdx.x * blockDim.x + threadIdx.x; //calculating
+gloable thread id.
+if (tid % 2 == 0 && tid < size - 1) {
+if (arr[tid] > arr[tid + 1]) {
+device_swap(arr[tid], arr[tid + 1]);
+isSorted = false;
+}
+}
+__syncthreads(); // Synchronize threads within block
+if (tid % 2 != 0 && tid < size - 1) {
+if (arr[tid] > arr[tid + 1]) {
+device_swap(arr[tid], arr[tid + 1]);
+isSorted = false;
+}
+}
+__syncthreads(); // Synchronize threads within block
+}
+}
+void bubble_sort_odd_even(vector<int>& arr) {
+int size = arr.size();
+int* d_arr;
+cudaMalloc(&d_arr, size * sizeof(int));
+cudaMemcpy(d_arr, arr.data(), size * sizeof(int),
+cudaMemcpyHostToDevice);
+// Calculate grid and block dimensions
+int blockSize = 256;
+int gridSize = (size + blockSize - 1) / blockSize;
+// Perform bubble sort on GPU
+kernel_bubble_sort_odd_even<<<gridSize, blockSize>>>(d_arr, size);
+// Copy sorted array back to host
+cudaMemcpy(arr.data(), d_arr, size * sizeof(int),
+cudaMemcpyDeviceToHost);
+cout<<"sorted array"<<endl;
+for(int i=0;i<size;i++){
+cout<<arr[i]<<" ";
+}
+cout<<endl;
+cudaFree(d_arr);
+}
+int main() {
+vector<int> arr = {5,4 , 3,2 ,1 ,0,6,9,7 };
+double start, end;
+// Measure performance of parallel bubble sort using odd-even
+transposition
+start =
+chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time
+_since_epoch()).count();
+bubble_sort_odd_even(arr);
+end =
+chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time
+_since_epoch()).count();
+cout << "Parallel bubble sort using odd-even transposition time: " <<
+end - start << " milliseconds" << endl;
+return 0;
+}
+
+
+
+!nvcc bubble.cu -o bubble
+!./bubble

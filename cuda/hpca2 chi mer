@@ -1,0 +1,106 @@
+%%writefile merge_sort.cu
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <algorithm> // for min function
+using namespace std;
+// Kernel to merge two sorted halves
+__global__ void kernel_merge(int* arr, int* temp, int* subarray_sizes, int
+array_size) {
+int idx = blockIdx.x * blockDim.x + threadIdx.x;//calculating global
+thread id
+int left_start = idx * 2 * (*subarray_sizes);
+if (left_start < array_size) {
+int mid = min(left_start + (*subarray_sizes) - 1, array_size - 1);
+int right_end = min(left_start + 2 * (*subarray_sizes) - 1,
+array_size - 1);
+int i = left_start;
+int j = mid + 1;
+int k = left_start;
+// Merge process
+while (i <= mid && j <= right_end) {
+if (arr[i] <= arr[j]) {
+temp[k] = arr[i];
+i++;
+} else {
+temp[k] = arr[j];
+j++;
+}
+k++;
+}
+while (i <= mid) {
+temp[k] = arr[i];
+i++;
+k++;
+}
+while (j <= right_end) {
+temp[k] = arr[j];
+j++;
+k++;
+}
+// Copy the sorted subarray back to the original array
+for (int t = left_start; t <= right_end; t++) {
+arr[t] = temp[t];
+}
+}
+}
+void merge_sort(vector<int>& arr) {
+int array_size = arr.size();
+int* d_arr;
+int* d_temp;
+int* d_subarray_size;
+// Allocate memory on the GPU
+cudaMalloc(&d_arr, array_size * sizeof(int));
+cudaMalloc(&d_temp, array_size * sizeof(int));
+cudaMalloc(&d_subarray_size, sizeof(int)); // Holds the subarray size
+for each step
+cudaMemcpy(d_arr, arr.data(), array_size * sizeof(int),
+cudaMemcpyHostToDevice);
+int blockSize = 256; // Threads per block
+int gridSize; // Number of blocks in the grid, depending on the
+subarray size
+// Start with width of 1, then double each iteration
+int width = 1;
+while (width < array_size) {
+cudaMemcpy(d_subarray_size, &width, sizeof(int),
+cudaMemcpyHostToDevice);
+gridSize = (array_size / (2 * width)) + 1;
+kernel_merge<<<gridSize, blockSize>>>(d_arr, d_temp,
+d_subarray_size, array_size);
+cudaDeviceSynchronize(); // Ensure all threads finish before the
+next step
+// Double the subarray width for the next iteration
+width *= 2;
+}
+// Copy the sorted array back to the host
+cudaMemcpy(arr.data(), d_arr, array_size * sizeof(int),
+cudaMemcpyDeviceToHost);
+// Free GPU memory
+cudaFree(d_arr);
+cudaFree(d_temp);
+cudaFree(d_subarray_size);
+}
+int main() {
+vector<int> arr = {6, 5, 4, 1, 7, 9, 8, 3, 2};
+double start, end;
+start =
+chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time
+_since_epoch()).count();
+merge_sort(arr);
+end =
+chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time
+_since_epoch()).count();
+cout << "Parallel merge sort time: " << end - start << " milliseconds"
+<< endl;
+cout << "Sorted array: ";
+for (int num : arr) {
+cout << num << " ";
+}
+cout << endl;
+return 0;
+}
+
+
+
+!nvcc merge_sort.cu -o merge
+!./merge
